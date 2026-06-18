@@ -1,97 +1,122 @@
 require('dotenv').config();
+
 const http = require('http');
 const app = require('./app');
 const socketHandler = require('./socket');
-const { sequelize } = require('./database/models');
 const logger = require('./config/logger');
 
-/**
- * Definição da Porta
- */
-const PORT = process.env.PORT || 3000;
+let sequelize;
 
-/**
- * Criação do Servidor HTTP (Necessário para integrar Express + Socket.IO)
- */
-const server = http.createServer(app);
+try {
+const db = require('./database/models');
+sequelize = db.sequelize;
 
-/**
- * Inicialização do Bootstrap do Sistema
- */
-async function bootstrap() {
-  try {
-    logger.info('Iniciando o bootstrap do ScanGo Backend...');
-
-    // 1. Testar conexão com o Banco de Dados (PostgreSQL)
-    await sequelize.authenticate();
-    logger.info('Conexão com o banco de dados estabelecida com sucesso.');
-
-    // Opcional: Sincronizar modelos em desenvolvimento (Cuidado em produção!)
-    // if (process.env.NODE_ENV === 'development') {
-    //   await sequelize.sync({ alter: false });
-    // }
-
-    // 2. Inicializar o Socket.IO
-    socketHandler.init(server);
-
-    // 3. Iniciar a escuta do servidor
-    server.listen(PORT, () => {
-      logger.info(`🚀 Servidor ScanGo rodando em modo [${process.env.NODE_ENV}] na porta ${PORT}`);
-      logger.info(`📄 Documentação disponível em: ${process.env.APP_URL || 'http://localhost:' + PORT}/docs`);
-    });
-
-  } catch (error) {
-    logger.error(`❌ Falha crítica no bootstrap: ${error.message}`);
-    process.exit(1); // Encerra o processo se não conseguir conectar ao DB
-  }
+logger.info('Models carregados com sucesso.');
+logger.info(`Sequelize versão: ${db.Sequelize.version}`);
+} catch (error) {
+console.error('======================================');
+console.error('ERRO AO CARREGAR MODELS');
+console.error(error.message);
+console.error(error.stack);
+console.error('======================================');
+process.exit(1);
 }
 
-/**
- * TRATAMENTO DE EXCEÇÕES NÃO CAPTURADAS (Segurança Enterprise)
- * Evita que o servidor caia sem registrar o motivo em caso de erro de programador.
- */
+const PORT = process.env.PORT || 3000;
+
+const server = http.createServer(app);
+
+async function bootstrap() {
+try {
+logger.info('======================================');
+logger.info('INICIANDO SCANGO BACKEND');
+logger.info('======================================');
+
+```
+logger.info(`NODE_ENV: ${process.env.NODE_ENV}`);
+logger.info(`PORT: ${PORT}`);
+
+logger.info('Testando conexão com banco de dados...');
+
+await sequelize.authenticate();
+
+logger.info('Banco conectado com sucesso.');
+
+try {
+  const [result] = await sequelize.query('SELECT NOW()');
+  logger.info(`Banco respondeu: ${JSON.stringify(result)}`);
+} catch (dbTestError) {
+  logger.warn(`Falha no teste SQL: ${dbTestError.message}`);
+}
+
+logger.info('Inicializando Socket.IO...');
+socketHandler.init(server);
+
+server.listen(PORT, '0.0.0.0', () => {
+  logger.info('======================================');
+  logger.info('SERVIDOR ONLINE');
+  logger.info(`URL: ${process.env.APP_URL}`);
+  logger.info(`PORTA: ${PORT}`);
+  logger.info(`AMBIENTE: ${process.env.NODE_ENV}`);
+  logger.info('======================================');
+});
+```
+
+} catch (error) {
+logger.error('======================================');
+logger.error('FALHA NO BOOTSTRAP');
+logger.error(error.message);
+logger.error(error.stack);
+logger.error('======================================');
+process.exit(1);
+}
+}
+
 process.on('uncaughtException', (error) => {
-  logger.error(`CRITICAL: Uncaught Exception - ${error.message}`);
-  logger.error(error.stack);
-  // Em produção, aqui você notificaria uma ferramenta como Sentry ou New Relic
+console.error('======================================');
+console.error('UNCAUGHT EXCEPTION');
+console.error(error.message);
+console.error(error.stack);
+console.error('======================================');
+process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+console.error('======================================');
+console.error('UNHANDLED REJECTION');
+console.error(reason);
+console.error('======================================');
+});
+
+async function gracefulShutdown(signal) {
+logger.info(`Recebido sinal ${signal}`);
+
+server.close(async () => {
+logger.info('Servidor HTTP encerrado.');
+
+```
+try {
+  if (sequelize) {
+    await sequelize.close();
+    logger.info('Conexão com banco encerrada.');
+  }
+
+  process.exit(0);
+} catch (error) {
+  logger.error(`Erro ao encerrar banco: ${error.message}`);
   process.exit(1);
+}
+```
+
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error(`CRITICAL: Unhandled Rejection at: ${promise} - reason: ${reason}`);
-  // Não encerramos o processo aqui por padrão, mas registramos o erro crítico
-});
+setTimeout(() => {
+logger.error('Timeout no shutdown.');
+process.exit(1);
+}, 10000);
+}
 
-/**
- * GRACEFUL SHUTDOWN (Desligamento Suave)
- * Garante que o servidor feche as conexões com o DB e Socket antes de encerrar.
- */
-const gracefulShutdown = () => {
-  logger.info('Encerrando servidor ScanGo graciosamente...');
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-  server.close(async () => {
-    logger.info('Servidor HTTP fechado.');
-
-    try {
-      await sequelize.close();
-      logger.info('Conexão com banco de dados encerrada.');
-      process.exit(0);
-    } catch (err) {
-      logger.error(`Erro ao fechar DB: ${err.message}`);
-      process.exit(1);
-    }
-  });
-
-  // Forçar encerramento após 10 segundos se não fechar naturalmente
-  setTimeout(() => {
-    logger.error('Shutdown forçado: as conexões não fecharam a tempo.');
-    process.exit(1);
-  }, 10000);
-};
-
-// Escuta sinais de encerramento do SO (Docker/Kubernetes/Linux)
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
-
-// Inicia o sistema
 bootstrap();
