@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # Banco de Dados Principal (PostgreSQL)
+  scango-db:
+    image: postgres:15-alpine
+    container_name: scango-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASS:-password}
+      POSTGRES_DB: ${DB_NAME:-scango_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - scango_pgdata:/var/lib/postgresql/data
+    networks:
+      - scango-network
+
+  # Cache e Rate Limiting (Redis)
+  scango-redis:
+    image: redis:alpine
+    container_name: scango-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - scango-network
+
+networks:
+  scango-network:
+    driver: bridge
+
+volumes:
+  scango_pgdata:
